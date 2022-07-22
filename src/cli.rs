@@ -1,4 +1,4 @@
-use clap::{ArgEnum, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 
 pub fn init() -> Cli {
     Cli::parse()
@@ -17,11 +17,10 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    #[clap(about = "Login into (Moco/Jira)", long_about = None)]
-    Login {
-        #[clap(arg_enum,default_value_t = Login::Moco)]
-        system: Login,
-    },
+    #[clap(about = "Moco login", long_about = None)]
+    Login {},
+    #[clap(about = "Performance report summary", long_about = None)]
+    Report {},
     #[clap(about = "List activities", long_about = None)]
     List {
         #[clap(long)]
@@ -42,10 +41,10 @@ pub enum Commands {
         task: Option<i64>,
 
         #[clap(long)]
-        hours: Option<f64>,
+        date: Option<String>,
 
         #[clap(long)]
-        date: Option<String>,
+        hours: Option<f64>,
 
         #[clap(long)]
         description: Option<String>,
@@ -54,58 +53,64 @@ pub enum Commands {
     Edit {
         #[clap(long)]
         activity: Option<i64>,
+
+        #[clap(long)]
+        project: i64,
+
+        #[clap(long)]
+        task: i64,
+
+        #[clap(long)]
+        date: Option<String>,
+
+        #[clap(long)]
+        hours: Option<f64>,
+
+        #[clap(long)]
+        description: Option<String>,
     },
     #[clap(about = "Delete activity", long_about = None)]
     Rm {
         #[clap(long)]
-        activity: Option<i64>,
+        activity: i64,
     },
     #[clap(about = "Start/Stop activity timer", long_about = None)]
     Timer {
-        #[clap(arg_enum)]
+        #[clap(subcommand)]
         system: Timer,
+    },
+    #[clap(about = "List customers", long_about = None)]
+    Customers {},
+    #[clap(about = "List projects", long_about = None)]
+    Projects {
+        #[clap(long)]
+        customer: Option<i64>,
+    },
+    #[clap(about = "List project tasks", long_about = None)]
+    Tasks {
+        #[clap(long)]
+        project: i64,
+    },
+    #[clap(about = "List activities", long_about = None)]
+    Activities {
+        #[clap(long)]
+        from: String,
 
+        #[clap(long)]
+        to: String,
+    },
+    #[clap(about = "Get activity", long_about = None)]
+    Activity {
+        #[clap(long)]
+        activity: i64,
+    },
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Subcommand)]
+pub enum Timer {
+    Start {
         #[clap(long)]
         activity: Option<i64>,
     },
-    #[clap(about = "Sync missing Jira Tempo logs to Moco", long_about = None)]
-    Sync {
-        #[clap(arg_enum,default_value_t = Sync::Jira)]
-        system: Sync,
-
-        #[clap(long)]
-        today: bool,
-
-        #[clap(long)]
-        week: bool,
-
-        #[clap(long)]
-        month: bool,
-
-        #[clap(long)]
-        project: Option<i64>,
-
-        #[clap(long)]
-        task: Option<i64>,
-
-        #[clap(long)]
-        dry_run: bool,
-    },
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
-pub enum Login {
-    Moco,
-    Jira,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
-pub enum Timer {
-    Start,
     Stop,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ArgEnum)]
-pub enum Sync {
-    Jira,
 }

@@ -86,9 +86,8 @@ pub struct Task {
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Customer {
-    pub id: i64,
-    pub name: String,
+pub struct GetProjectTasks {
+    pub project_id: i64,
 }
 
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -147,7 +146,7 @@ pub struct DeleteActivity {
     pub activity_id: i64,
 }
 
-//Project
+// Project
 
 pub type Projects = Vec<Project>;
 
@@ -163,6 +162,10 @@ pub struct Project {
     pub tasks: Vec<ProjectTask>,
 }
 
+// Task
+
+pub type ProjectTasks = Vec<Task>;
+
 #[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectTask {
@@ -170,4 +173,49 @@ pub struct ProjectTask {
     pub name: String,
     pub active: bool,
     pub billable: bool,
+}
+
+// Customer
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Customer {
+    pub id: i64,
+    pub name: String,
+}
+
+// User
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PerformanceReport {
+    pub annually: AnnualReport,
+    pub monthly: Vec<MonthlyReport>,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnnualReport {
+    pub year: i32,
+    #[serde(rename = "employment_hours")]
+    pub employment_hours: f64,
+    #[serde(rename = "target_hours")]
+    pub target_hours: f64,
+    #[serde(rename = "hours_tracked_total")]
+    pub hours_tracked_total: f64,
+    pub variation: f64,
+    #[serde(rename = "variation_until_today")]
+    pub variation_until_today: f64,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonthlyReport {
+    pub year: i32,
+    pub month: i32,
+    #[serde(rename = "target_hours")]
+    pub target_hours: f64,
+    #[serde(rename = "hours_tracked_total")]
+    pub hours_tracked_total: f64,
+    pub variation: f64,
 }

@@ -3,14 +3,8 @@ use std::{cell::RefCell, error::Error, sync::Arc};
 use reqwest::Client;
 
 use crate::moco::model::{
-    Activity,
-    ControlActivityTimer,
-    CreateActivity,
-    DeleteActivity,
-    EditActivity,
-    Employment,
-    GetActivity,
-    Projects,
+    Activity, ControlActivityTimer, CreateActivity, DeleteActivity, EditActivity, Employment,
+    GetActivity, GetProjectTasks, PerformanceReport, ProjectTasks, Projects,
 };
 
 use crate::config::AppConfig;
@@ -24,6 +18,7 @@ pub struct MocoClient {
 enum MocoClientError {
     NotLoggedIn,
 }
+
 impl Error for MocoClientError {}
 
 #[allow(clippy::await_holding_refcell_ref)]
@@ -65,14 +60,33 @@ impl MocoClient {
         }
     }
 
+    pub async fn get_performance_report(&self) -> Result<PerformanceReport, Box<dyn Error>> {
+        let config = &self.config.borrow();
+        match (
+            config.moco_admin_api_key.as_ref(),
+            config.moco_company.as_ref(),
+            config.moco_user_id.as_ref(),
+        ) {
+            (Some(admin_api_key), Some(company), Some(user_id)) => Ok(self
+                .client
+                .get(format!(
+                    "https://{company}.mocoapp.com/api/v1/users/{user_id}/performance_report"
+                ))
+                .header("Authorization", format!("Token token={}", admin_api_key))
+                .send()
+                .await?
+                .json::<PerformanceReport>()
+                .await?),
+            (_, _, _) => Err(Box::new(MocoClientError::NotLoggedIn)),
+        }
+    }
+
     pub async fn get_activities(
         &self,
         from: String,
         to: String,
-        task_id: Option<String>,
-        term: Option<String>,
     ) -> Result<Vec<Activity>, Box<dyn Error>> {
-        let mut parameter = vec![
+        let parameter = vec![
             ("from", from),
             ("to", to),
             (
@@ -80,13 +94,6 @@ impl MocoClient {
                 format!("{}", &self.config.borrow().moco_user_id.unwrap()),
             ),
         ];
-
-        if let Some(x) = task_id {
-            parameter.push(("task_id", x))
-        }
-        if let Some(x) = term {
-            parameter.push(("term", x))
-        }
 
         let config = &self.config.borrow();
         match (config.moco_api_key.as_ref(), config.moco_company.as_ref()) {
@@ -207,6 +214,27 @@ impl MocoClient {
                 .send()
                 .await?
                 .json::<Projects>()
+                .await?),
+            (_, _) => Err(Box::new(MocoClientError::NotLoggedIn)),
+        }
+    }
+
+    pub async fn get_project_tasks(
+        &self,
+        payload: &GetProjectTasks,
+    ) -> Result<ProjectTasks, Box<dyn Error>> {
+        let config = &self.config.borrow();
+        match (config.moco_api_key.as_ref(), config.moco_company.as_ref()) {
+            (Some(api_key), Some(company)) => Ok(self
+                .client
+                .get(format!(
+                    "https://{company}.mocoapp.com/api/v1/projects/{}/tasks",
+                    payload.project_id
+                ))
+                .header("Authorization", format!("Token token={}", api_key))
+                .send()
+                .await?
+                .json::<ProjectTasks>()
                 .await?),
             (_, _) => Err(Box::new(MocoClientError::NotLoggedIn)),
         }

@@ -1,28 +1,22 @@
-use std::{cell::RefCell, error::Error, io::Write, sync::Arc, vec};
+use std::{cell::RefCell, error::Error, fs::remove_file, fs::File, io::Write, sync::Arc, vec};
 
 use crate::{
     moco::{client::MocoClient, model::EditActivity},
-    utils::{ask_question, mandatory_validator, optional_validator},
+    utils::{ask_question, mandatory_validator},
 };
 
-use chrono::Utc;
-use jira_tempo::client::JiraTempoClient;
-use log::trace;
+use chrono::{Duration, Local, Utc};
 use utils::{promp_activity_select, promp_task_select, render_table};
 
+use itertools::Itertools;
+
 use crate::moco::model::{
-    ControlActivityTimer,
-    CreateActivity,
-    DeleteActivity,
-    GetActivity
+    ControlActivityTimer, CreateActivity, DeleteActivity, GetActivity, GetProjectTasks,
 };
 
 mod cli;
 mod config;
-mod jira_tempo;
 mod moco;
-mod tempo;
-
 mod utils;
 
 #[tokio::main]
@@ -36,40 +30,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     log_builder.init();
     let config = Arc::new(RefCell::new(config::init()?));
     let moco_client = MocoClient::new(&config);
-    let tempo_client = JiraTempoClient::new(&config);
 
     match args.command {
-        cli::Commands::Login { system } => match system {
-            cli::Login::Jira => {
-                println!("Jira Tempo Login");
+        cli::Commands::Login {} => {
+            let moco_company = ask_question("Enter the company name: ", &mandatory_validator)?;
+            let api_key = ask_question("Enter your personal API key: ", &mandatory_validator)?;
+            let admin_api_key = ask_question("Enter the admin API key: ", &mandatory_validator)?;
 
-                let api_key = ask_question("Enter your personal API key: ", &mandatory_validator)?;
-                config.borrow_mut().jira_tempo_api_key = Some(api_key);
+            config.borrow_mut().moco_company = Some(moco_company);
+            config.borrow_mut().moco_api_key = Some(api_key);
+            config.borrow_mut().moco_admin_api_key = Some(admin_api_key);
 
-                tempo_client.test_login().await?;
+            let firstname = ask_question("Enter your firstname: ", &mandatory_validator)?;
+            let lastname = ask_question("Enter your lastname: ", &mandatory_validator)?;
 
-                config.borrow_mut().write_config()?;
-                println!("🤩 Logged in 🤩")
-            }
-            cli::Login::Moco => {
-                println!("Moco Login");
+            let client_id = moco_client.get_user_id(firstname, lastname).await?;
 
-                let moco_company = ask_question("Enter Moco company name: ", &mandatory_validator)?;
-                let api_key = ask_question("Enter your personal API key: ", &mandatory_validator)?;
-
-                config.borrow_mut().moco_company = Some(moco_company);
-                config.borrow_mut().moco_api_key = Some(api_key);
-
-                let firstname = ask_question("Enter firstname: ", &mandatory_validator)?;
-                let lastname = ask_question("Enter lastname:  ", &mandatory_validator)?;
-
-                let client_id = moco_client.get_user_id(firstname, lastname).await?;
-
-                config.borrow_mut().moco_user_id = client_id;
-                config.borrow_mut().write_config()?;
-                println!("🤩 Logged in 🤩")
-            }
-        },
+            config.borrow_mut().moco_user_id = client_id;
+            config.borrow_mut().write_config()?;
+            println!("You're logged in")
+        }
         cli::Commands::List { today, week, month } => {
             let (from, to) = utils::select_from_to_date(today, week || !today && !month, month);
 
@@ -77,8 +57,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .get_activities(
                     from.format("%Y-%m-%d").to_string(),
                     to.format("%Y-%m-%d").to_string(),
-                    None,
-                    None,
                 )
                 .await?;
 
@@ -89,6 +67,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         activity.date.clone(),
                         activity.hours.to_string(),
                         activity.customer.name.clone(),
+                        activity.project.name.clone(),
                         activity.task.name.clone(),
                         activity
                             .description
@@ -102,31 +81,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 0,
                 vec![
                     "Date".to_string(),
-                    "Duration (hours)".to_string(),
+                    "Duration".to_string(),
                     "Customer".to_string(),
+                    "Project".to_string(),
                     "Task".to_string(),
                     "Description".to_string(),
                 ],
             );
 
-            list.push(vec![
-                "-".to_string(),
-                activities
-                    .iter()
-                    .fold(0.0, |hours, activity| activity.hours + hours)
-                    .to_string(),
-                "-".to_string(),
-                "-".to_string(),
-                "".to_string(),
-            ]);
-
-            render_table(list);
+            render_table(list)
         }
         cli::Commands::New {
             project,
             task,
-            hours,
             date,
+            hours,
             description,
         } => {
             let now = Utc::now().format("%Y-%m-%d").to_string();
@@ -159,7 +128,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let description = if let Some(d) = description {
                 d
             } else {
-                ask_question("Description: ", &optional_validator)?
+                print!("Description: ");
+                std::io::stdout().flush()?;
+
+                let description = utils::read_line()?;
+                if description.is_empty() {
+                    "".to_string()
+                } else {
+                    description
+                }
             };
 
             moco_client
@@ -168,67 +145,203 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     project_id: project.id,
                     task_id: task.id,
                     hours: Some(hours),
-                    description,
+                    description: description.clone(),
                     ..Default::default()
                 })
                 .await?;
+
+            if hours == 0.0 {
+                let mut file = File::create("/home/rodolfo/.config/mococli/moco_timer")?;
+                file.write(
+                    format!(
+                        "{} {}",
+                        Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+                    )
+                    .as_bytes(),
+                )?;
+            }
+
+            let report = moco_client.get_performance_report().await?;
+
+            let operator = if report.annually.variation_until_today > 0.00 {
+                "+"
+            } else {
+                ""
+            };
+
+            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            file.write(
+                format!(
+                    "{}{}",
+                    operator,
+                    report.annually.variation_until_today.to_string()
+                )
+                .as_bytes(),
+            )?;
+
+            println!(
+                "Activity\n    Project: {}\n    Task: {}\n    Duration: {} h\n    Description: {}",
+                project.name,
+                task.name,
+                hours,
+                description.clone()
+            )
         }
-        cli::Commands::Edit { activity } => {
-            let activity = promp_activity_select(&moco_client, activity).await?;
+        cli::Commands::Edit {
+            activity,
+            project,
+            task,
+            date,
+            hours,
+            description,
+        } => {
+            let activity = if let Some(a) = activity {
+                moco_client
+                    .get_activity(&GetActivity { activity_id: a })
+                    .await?
+            } else {
+                promp_activity_select(&moco_client, activity).await?
+            };
 
-            let now = Utc::now().format("%Y-%m-%d").to_string();
+            let date = if let Some(d) = date {
+                d
+            } else {
+                print!("New date (YYYY-MM-DD) - Default '{}': ", activity.date);
+                std::io::stdout().flush()?;
 
-            print!("New date (YYYY-MM-DD) - Default '{}': ", activity.date);
-            std::io::stdout().flush()?;
+                let date = utils::read_line()?;
+                if date.is_empty() {
+                    activity.date.clone()
+                } else {
+                    date
+                }
+            };
 
-            let mut date = utils::read_line()?;
-            if date.is_empty() {
-                date = now.clone()
-            }
+            let hours = if let Some(h) = hours {
+                h
+            } else {
+                print!("New duration (hours) - Default '{}': ", activity.hours);
+                std::io::stdout().flush()?;
 
-            print!("New duration (hours) - Default '{}': ", activity.hours);
-            std::io::stdout().flush()?;
+                let hours = utils::read_line()?;
+                if hours.is_empty() {
+                    activity.hours
+                } else {
+                    hours.parse::<f64>()?
+                }
+            };
 
-            let mut hours = utils::read_line()?;
-            if hours.is_empty() {
-                hours = activity.hours.to_string()
-            }
+            let description = if let Some(d) = description {
+                d
+            } else {
+                print!("New description - Default 'current': ");
+                std::io::stdout().flush()?;
 
-            print!("New description - Default 'current': ");
-            std::io::stdout().flush()?;
-
-            let mut description = utils::read_line()?;
-            if description.is_empty() {
-                description = activity
-                    .description
-                    .as_ref()
-                    .unwrap_or(&String::new())
-                    .to_string()
-            }
+                let description = utils::read_line()?;
+                if description.is_empty() {
+                    activity
+                        .description
+                        .as_ref()
+                        .unwrap_or(&String::new())
+                        .to_string()
+                } else {
+                    description
+                }
+            };
 
             moco_client
                 .edit_activity(&EditActivity {
                     activity_id: activity.id,
-                    project_id: activity.project.id,
-                    task_id: activity.task.id,
+                    project_id: Some(project).unwrap(),
+                    task_id: task,
                     date,
+                    hours: hours.to_string(),
                     description,
-                    hours,
                 })
                 .await?;
+
+            let activity2 = moco_client
+                .get_activity(&GetActivity {
+                    activity_id: activity.id,
+                })
+                .await?;
+
+            let report = moco_client.get_performance_report().await?;
+
+            let operator = if report.annually.variation_until_today > 0.00 {
+                "+"
+            } else {
+                ""
+            };
+
+            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            file.write(
+                format!(
+                    "{}{}",
+                    operator,
+                    report.annually.variation_until_today.to_string()
+                )
+                .as_bytes(),
+            )?;
+
+            println!(
+                "Activity\n    Customer: {}\n    Project: {}\n    Task: {}\n    Duration: {} h\n    Description: {}",
+                activity2.customer.name,
+                activity2.project.name,
+                activity2.task.name,
+                activity2.hours,
+                activity2.description.unwrap()
+            )
         }
         cli::Commands::Rm { activity } => {
-            let activity = promp_activity_select(&moco_client, activity).await?;
+            let activity = moco_client
+                .get_activity(&GetActivity {
+                    activity_id: activity,
+                })
+                .await?;
 
             moco_client
                 .delete_activity(&DeleteActivity {
                     activity_id: activity.id,
                 })
                 .await?;
+
+            let report = moco_client.get_performance_report().await?;
+
+            let operator = if report.annually.variation_until_today > 0.00 {
+                "+"
+            } else {
+                ""
+            };
+
+            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            file.write(
+                format!(
+                    "{}{}",
+                    operator,
+                    report.annually.variation_until_today.to_string()
+                )
+                .as_bytes(),
+            )?;
+
+            println!(
+                "Activity\n    Project: {}\n    Task: {}\n    Duration: {} h\n    Description: {}",
+                activity.project.name,
+                activity.task.name,
+                activity.hours,
+                activity.description.unwrap()
+            )
         }
-        cli::Commands::Timer { system, activity } => match system {
-            cli::Timer::Start => {
-                let activity = promp_activity_select(&moco_client, activity).await?;
+        cli::Commands::Timer { system } => match system {
+            cli::Timer::Start { activity } => {
+                let activity = if let Some(a) = activity {
+                    moco_client
+                        .get_activity(&GetActivity { activity_id: a })
+                        .await?
+                } else {
+                    promp_activity_select(&moco_client, activity).await?
+                };
 
                 moco_client
                     .control_activity_timer(&ControlActivityTimer {
@@ -236,13 +349,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         activity_id: activity.id,
                     })
                     .await?;
+
+                let activity = moco_client
+                    .get_activity(&GetActivity {
+                        activity_id: activity.id,
+                    })
+                    .await?;
+
+                let duration = Duration::minutes((activity.hours * 60.0) as i64);
+
+                let mut file = File::create("/home/rodolfo/.config/mococli/moco_timer")?;
+                file.write(
+                    format!(
+                        "{} {}",
+                        Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        (Local::now() - duration)
+                            .format("%Y-%m-%d %H:%M:%S")
+                            .to_string()
+                    )
+                    .as_bytes(),
+                )?;
+
+                println!(
+                    "Activity\n    Project: {}\n    Task: {}\n    Duration: {} h\n    Description: {}",
+                    activity.project.name,
+                    activity.task.name,
+                    activity.hours,
+                    activity.description.unwrap()
+                )
             }
             cli::Timer::Stop => {
-                let now = Utc::now().format("%Y-%m-%d").to_string();
+                let now = Local::now().format("%Y-%m-%d").to_string();
                 let from = now.clone();
                 let to = now.clone();
 
-                let activities = moco_client.get_activities(from, to, None, None).await?;
+                let activities = moco_client.get_activities(from, to).await?;
                 let activity = activities.iter().find(|a| !a.timer_started_at.is_null());
 
                 if let Some(a) = activity {
@@ -256,138 +397,173 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let a = moco_client
                         .get_activity(&GetActivity { activity_id: a.id })
                         .await?;
-                    println!("Activity duration: {} hours", a.hours);
+
+                    let report = moco_client.get_performance_report().await?;
+
+                    let operator = if report.annually.variation_until_today > 0.00 {
+                        "+"
+                    } else {
+                        ""
+                    };
+
+                    let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+                    file.write(
+                        format!(
+                            "{}{}",
+                            operator,
+                            report.annually.variation_until_today.to_string()
+                        )
+                        .as_bytes(),
+                    )?;
+
+                    println!(
+                        "Activity\n    Project: {}\n    Task: {}\n    Duration: {} h\n    Description: {}",
+                        a.project.name,
+                        a.task.name,
+                        a.hours,
+                        a.description.unwrap()
+                    );
+
+                    remove_file("/home/rodolfo/.config/mococli/moco_timer")
+                        .expect("Timer file did not exist");
                 } else {
-                    println!("Could not stop timer since it was not on");
+                    println!("Timer was already stopped...");
                 }
             }
         },
-        cli::Commands::Sync {
-            system,
-            today,
-            week,
-            month,
-            dry_run,
-            project,
-            task,
-        } => match system {
-            cli::Sync::Jira => {
-                let (from, to) = utils::select_from_to_date(today, week, month);
+        cli::Commands::Customers {} => {
+            let projects = moco_client.get_assigned_projects().await?;
 
-                let worklogs = tempo_client
-                    .get_worklogs(
-                        from.format("%Y-%m-%d").to_string(),
-                        to.format("%Y-%m-%d").to_string(),
-                    )
-                    .await?;
+            let mut list: Vec<Vec<String>> = projects
+                .into_iter()
+                .unique_by(|project| project.customer.id)
+                .map(|project| {
+                    vec![
+                        project.customer.id.to_string(),
+                        project.customer.name.clone(),
+                    ]
+                })
+                .collect();
+            list.insert(0, vec!["ID".to_string(), "Name".to_string()]);
 
-                trace!("Tempo: {:#?}", worklogs);
+            list.push(vec!["-".to_string(), "-".to_string()]);
 
-                let (project, task) = promp_task_select(&moco_client, project, task).await?;
+            render_table(list)
+        }
+        cli::Commands::Projects { customer } => {
+            let projects = moco_client.get_assigned_projects().await?;
 
-                let activities = moco_client
-                    .get_activities(
-                        from.format("%Y-%m-%d").to_string(),
-                        to.format("%Y-%m-%d").to_string(),
-                        Some(task.id.to_string()),
-                        Some("mococli".to_string()),
-                    )
-                    .await?;
+            let mut list: Vec<Vec<String>> = projects
+                .iter()
+                .filter(|project| project.customer.id == customer.unwrap())
+                .map(|project| {
+                    vec![
+                        project.id.to_string(),
+                        project.name.clone(),
+                        project.customer.name.clone(),
+                    ]
+                })
+                .collect();
 
-                let worklogs: Vec<Result<CreateActivity, Box<dyn Error>>> = worklogs
-                    .results
-                    .iter()
-                    .filter(|worklog| {
-                        !activities.iter().any(|activity| {
+            list.insert(
+                0,
+                vec!["ID".to_string(), "Name".to_string(), "Customer".to_string()],
+            );
+
+            list.push(vec!["-".to_string(), "-".to_string(), "-".to_string()]);
+
+            render_table(list)
+        }
+        cli::Commands::Tasks { project } => {
+            let tasks = moco_client
+                .get_project_tasks(&GetProjectTasks {
+                    project_id: project,
+                })
+                .await?;
+
+            let mut list: Vec<Vec<String>> = tasks
+                .iter()
+                .map(|task| vec![task.id.to_string(), task.name.clone()])
+                .collect();
+
+            list.insert(0, vec!["ID".to_string(), "Name".to_string()]);
+
+            list.push(vec!["-".to_string(), "-".to_string()]);
+
+            render_table(list)
+        }
+        cli::Commands::Activity { activity } => {
+            let activity = moco_client
+                .get_activity(&GetActivity {
+                    activity_id: activity,
+                })
+                .await?;
+
+            println!(
+                "\n{}\n{}\n{}\n{}\n{}\n{}",
+                activity.customer.name,
+                activity.project.name,
+                activity.task.name,
+                activity.date,
+                activity.hours,
+                activity
+                    .description
+                    .as_ref()
+                    .unwrap_or(&String::new().to_string())
+            )
+        }
+        cli::Commands::Activities { from, to } => {
+            let activities = moco_client.get_activities(from, to).await?;
+
+            let mut list: Vec<Vec<String>> = activities
+                .iter()
+                .enumerate()
+                .map(|(index, activity)| {
+                    vec![
+                        activity.id.to_string(),
+                        format!(
+                            "{} - {} | {} | {} | {} h | {}",
+                            index.to_string(),
+                            activity.customer.name.clone(),
+                            activity.project.name.clone(),
+                            activity.task.name.clone(),
+                            activity.hours.to_string(),
                             activity
-                                .remote_id
+                                .description
                                 .as_ref()
-                                .and_then(|x| x.parse::<i64>().ok())
-                                .unwrap_or(0)
-                                == worklog.jira_worklog_id
-                        })
-                    })
-                    .map(|worklog| -> Result<CreateActivity, Box<dyn Error>> {
-                        Ok(CreateActivity {
-                            remote_service: Some("jira".to_string()),
-                            seconds: Some(worklog.time_spent_seconds),
-                            date: worklog.start_date.to_string(),
-                            tag: Some("mococli".to_string()),
-                            project_id: project.id,
-                            task_id: task.id,
-                            description: worklog.description.clone(),
-                            remote_id: Some(worklog.jira_worklog_id.to_string()),
-                            ..Default::default()
-                        })
-                    })
-                    .collect();
+                                .unwrap_or(&String::new().to_string())
+                        ),
+                    ]
+                })
+                .collect();
+            list.insert(0, vec!["ID".to_string(), "Information".to_string()]);
 
-                let output_list = vec!["Date", "Duration (hours)", "Description", "Project ID", "Task ID"];
+            list.push(vec!["-".to_string(), "".to_string()]);
 
-                let mut output_list = vec![output_list.iter().map(|str| str.to_string()).collect()];
+            render_table(list)
+        }
 
-                for worklog in &worklogs {
-                    if let Ok(worklog) = &worklog {
-                        output_list.push(vec![
-                            worklog.date.clone(),
-                            worklog
-                                .seconds
-                                .map(|seconds| seconds as f64 / 60.0 / 60.0)
-                                .unwrap_or(0.0)
-                                .to_string(),
-                            worklog.description.clone(),
-                            worklog.project_id.to_string(),
-                            worklog.task_id.to_string(),
-                        ])
-                    }
-                    if let Err(err) = &worklog {
-                        output_list.push(vec![
-                            "Error".to_string(),
-                            format!("{:?}", err),
-                            "".to_string(),
-                            "".to_string(),
-                            "".to_string(),
-                        ])
-                    }
-                }
+        cli::Commands::Report {} => {
+            let report = moco_client.get_performance_report().await?;
 
-                if dry_run {
-                    println!("Planed sync: ");
-                    println!(
-                        "From {} to {}",
-                        from.format("%d.%m.%y"),
-                        to.format("%d.%m.%y")
-                    );
-                    if output_list.len() == 1 {
-                        print!("Nothing, everything seems to be Synced!")
-                    } else {
-                        render_table(output_list);
-                    }
-                    println!();
-                } else {
-                    println!("Sync plan: ");
-                    println!(
-                        "From {} to {}",
-                        from.format("%d.%m.%y"),
-                        to.format("%d.%m.%y")
-                    );
-                    if output_list.len() == 1 {
-                        print!("Nothing, everything seems to be Synced!")
-                    } else {
-                        render_table(output_list);
-                    }
+            let operator = if report.annually.variation_until_today > 0.00 {
+                "+"
+            } else {
+                ""
+            };
 
-                    println!();
+            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            file.write(
+                format!(
+                    "{}{}",
+                    operator,
+                    report.annually.variation_until_today.to_string()
+                )
+                .as_bytes(),
+            )?;
 
-                    for worklog in worklogs {
-                        if let Ok(worklog) = &worklog {
-                            moco_client.create_activity(worklog).await?;
-                        }
-                    }
-                    println!("Synced!");
-                }
-            }
-        },
+            println!("{}", report.annually.variation_until_today.to_string())
+        }
     }
 
     Ok(())

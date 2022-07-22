@@ -1,7 +1,7 @@
 use std::{error::Error, io::Write, vec};
 
-use crate::moco::model::{Activity, Project, ProjectTask};
 use crate::moco::client::MocoClient;
+use crate::moco::model::{Activity, Project, ProjectTask};
 
 use chrono::Utc;
 
@@ -112,10 +112,6 @@ pub fn ask_question(
     }
 }
 
-pub fn optional_validator(_: &str) -> Option<String> {
-    None
-}
-
 pub fn mandatory_validator(input: &str) -> Option<String> {
     if input.is_empty() {
         Some("Input is required".to_string())
@@ -191,7 +187,7 @@ pub async fn promp_activity_select(
         to = from.clone();
     }
 
-    let activities = moco_client.get_activities(from, to, None, None).await?;
+    let activities = moco_client.get_activities(from, to).await?;
     let activity = activities.iter().find(|a| a.id == activity.unwrap_or(-1));
 
     let activity = if let Some(a) = activity {
@@ -199,7 +195,14 @@ pub async fn promp_activity_select(
     } else {
         let activity_index = render_list_select(
             &activities,
-            vec!["Index", "Date", "Duration", "Project", "Task", "Description"],
+            vec![
+                "Index",
+                "Date",
+                "Duration",
+                "Project",
+                "Task",
+                "Description",
+            ],
             "Choose your Acitivity: ",
             &(|(index, activity)| {
                 vec![
@@ -208,10 +211,11 @@ pub async fn promp_activity_select(
                     activity.hours.to_string(),
                     activity.project.name.clone(),
                     activity.task.name.clone(),
-                    activity.description
+                    activity
+                        .description
                         .as_ref()
                         .unwrap_or(&String::new())
-                        .to_string()
+                        .to_string(),
                 ]
             }),
         )?;
