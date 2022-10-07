@@ -162,6 +162,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )?;
             }
 
+            let (from, to) = utils::select_from_to_date(true, false, false);
+
+            let activities = moco_client
+                .get_activities(
+                    from.format("%Y-%m-%d").to_string(),
+                    to.format("%Y-%m-%d").to_string(),
+                )
+            .await?;
+
+            let today: Vec<f64> =  activities.iter().map(|activity| {
+                activity.hours
+            }).collect();
+
+            let today_hours: f64 = today.iter().sum();
+
             let report = moco_client.get_performance_report().await?;
 
             let operator = if report.annually.variation_until_today > 0.00 {
@@ -173,9 +188,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
             file.write(
                 format!(
-                    "{}{}",
+                    "{}{} {}",
                     operator,
-                    report.annually.variation_until_today.to_string()
+                    report.annually.variation_until_today.to_string(),
+                    today_hours.to_string()
                 )
                 .as_bytes(),
             )?;
@@ -267,6 +283,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .await?;
 
+            let (from, to) = utils::select_from_to_date(true, false, false);
+
+            let activities = moco_client
+                .get_activities(
+                    from.format("%Y-%m-%d").to_string(),
+                    to.format("%Y-%m-%d").to_string(),
+                )
+            .await?;
+
+            let today: Vec<f64> =  activities.iter().map(|activity| {
+                activity.hours
+            }).collect();
+
+            let today_hours: f64 = today.iter().sum();
+
             let report = moco_client.get_performance_report().await?;
 
             let operator = if report.annually.variation_until_today > 0.00 {
@@ -278,9 +309,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
             file.write(
                 format!(
-                    "{}{}",
+                    "{}{} {}",
                     operator,
-                    report.annually.variation_until_today.to_string()
+                    report.annually.variation_until_today.to_string(),
+                    today_hours.to_string()
                 )
                 .as_bytes(),
             )?;
@@ -307,6 +339,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .await?;
 
+            let (from, to) = utils::select_from_to_date(true, false, false);
+
+            let activities = moco_client
+                .get_activities(
+                    from.format("%Y-%m-%d").to_string(),
+                    to.format("%Y-%m-%d").to_string(),
+                )
+            .await?;
+
+            let today: Vec<f64> =  activities.iter().map(|activity| {
+                activity.hours
+            }).collect();
+
+            let today_hours: f64 = today.iter().sum();
+
             let report = moco_client.get_performance_report().await?;
 
             let operator = if report.annually.variation_until_today > 0.00 {
@@ -318,9 +365,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
             file.write(
                 format!(
-                    "{}{}",
+                    "{}{} {}",
                     operator,
-                    report.annually.variation_until_today.to_string()
+                    report.annually.variation_until_today.to_string(),
+                    today_hours.to_string()
                 )
                 .as_bytes(),
             )?;
@@ -398,6 +446,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         .get_activity(&GetActivity { activity_id: a.id })
                         .await?;
 
+                    let (from, to) = utils::select_from_to_date(true, false, false);
+
+                    let activities = moco_client
+                        .get_activities(
+                            from.format("%Y-%m-%d").to_string(),
+                            to.format("%Y-%m-%d").to_string(),
+                        )
+                    .await?;
+
+                    let today: Vec<f64> =  activities.iter().map(|activity| {
+                        activity.hours
+                    }).collect();
+
+                    let today_hours: f64 = today.iter().sum();
+
                     let report = moco_client.get_performance_report().await?;
 
                     let operator = if report.annually.variation_until_today > 0.00 {
@@ -409,9 +472,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
                     file.write(
                         format!(
-                            "{}{}",
+                            "{}{} {}",
                             operator,
-                            report.annually.variation_until_today.to_string()
+                            report.annually.variation_until_today.to_string(),
+                            today_hours.to_string()
                         )
                         .as_bytes(),
                     )?;
@@ -544,6 +608,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
 
         cli::Commands::Report {} => {
+            let (from, to) = utils::select_from_to_date(true, false, false);
+
+            let activities = moco_client
+                .get_activities(
+                    from.format("%Y-%m-%d").to_string(),
+                    to.format("%Y-%m-%d").to_string(),
+                )
+                .await?;
+
+            let today: Vec<f64> =  activities.iter().map(|activity| {
+                activity.hours
+            }).collect();
+
+            let today_hours: f64 = today.iter().sum();
+
             let report = moco_client.get_performance_report().await?;
 
             let operator = if report.annually.variation_until_today > 0.00 {
@@ -555,14 +634,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
             file.write(
                 format!(
-                    "{}{}",
+                    "{}{} {}",
                     operator,
-                    report.annually.variation_until_today.to_string()
+                    report.annually.variation_until_today.to_string(),
+                    today_hours.to_string()
                 )
                 .as_bytes(),
             )?;
 
-            println!("{}", report.annually.variation_until_today.to_string())
+            println!(
+                "{}{} {}",
+                operator,
+                report.annually.variation_until_today.to_string(),
+                today_hours.to_string()
+            )
         }
     }
 
