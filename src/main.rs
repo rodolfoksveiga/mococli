@@ -427,6 +427,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
             }
             cli::Timer::Stop => {
+                remove_file("/home/rodolfo/.config/mococli/moco_timer")
+                    .expect("Timer file did not exist");
+
                 let now = Local::now().format("%Y-%m-%d").to_string();
                 let from = now.clone();
                 let to = now.clone();
@@ -487,9 +490,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         a.hours,
                         a.description.unwrap()
                     );
-
-                    remove_file("/home/rodolfo/.config/mococli/moco_timer")
-                        .expect("Timer file did not exist");
                 } else {
                     println!("Timer was already stopped...");
                 }
