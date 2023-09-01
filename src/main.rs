@@ -151,7 +151,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .await?;
 
             if hours == 0.0 {
-                let mut file = File::create("/home/rodolfo/.config/mococli/moco_timer")?;
+                let mut file = File::create("/home/rodox/.config/mococli/moco_timer")?;
                 file.write(
                     format!(
                         "{} {}",
@@ -185,7 +185,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ""
             };
 
-            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            let mut file = File::create("/home/rodox/.config/mococli/moco_report")?;
             file.write(
                 format!(
                     "{}{} {}",
@@ -306,7 +306,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ""
             };
 
-            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            let mut file = File::create("/home/rodox/.config/mococli/moco_report")?;
             file.write(
                 format!(
                     "{}{} {}",
@@ -362,7 +362,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ""
             };
 
-            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            let mut file = File::create("/home/rodox/.config/mococli/moco_report")?;
             file.write(
                 format!(
                     "{}{} {}",
@@ -406,7 +406,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
                 let duration = Duration::minutes((activity.hours * 60.0) as i64);
 
-                let mut file = File::create("/home/rodolfo/.config/mococli/moco_timer")?;
+                let mut file = File::create("/home/rodox/.config/mococli/moco_timer")?;
                 file.write(
                     format!(
                         "{} {}",
@@ -427,7 +427,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 )
             }
             cli::Timer::Stop => {
-                remove_file("/home/rodolfo/.config/mococli/moco_timer")
+                remove_file("/home/rodox/.config/mococli/moco_timer")
                     .expect("Timer file did not exist");
 
                 let now = Local::now().format("%Y-%m-%d").to_string();
@@ -472,7 +472,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                         ""
                     };
 
-                    let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+                    let mut file = File::create("/home/rodox/.config/mococli/moco_report")?;
                     file.write(
                         format!(
                             "{}{} {}",
@@ -631,7 +631,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ""
             };
 
-            let mut file = File::create("/home/rodolfo/.config/mococli/moco_report")?;
+            let mut file = File::create("/home/rodox/.config/mococli/moco_report")?;
             file.write(
                 format!(
                     "{}{} {}",
